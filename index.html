@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Bocina Bajos</title>
+<style>
+:root{--bg:#14102b;--panel:#231b4d;--line:#3a2f7a;--pink:#ff4d8d;--yellow:#ffd23f;--text:#f3eeff;--mute:#a79fd6;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--text);font-family:"Segoe UI",Roboto,Arial,sans-serif;min-height:100vh}
+main{max-width:480px;margin:0 auto;padding:16px}
+h1{margin:4px 0 12px;font:900 28px/1 "Arial Black",Impact,sans-serif;letter-spacing:-.5px}
+canvas{width:100%;aspect-ratio:1/1;display:block;background:var(--panel);border:2px solid var(--line);border-radius:20px}
+#title{margin:14px 0 2px;font-size:18px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#artist{color:var(--mute);font-size:14px;min-height:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.time{display:flex;justify-content:space-between;color:var(--mute);font-size:13px;margin-top:6px}
+input[type=range]{width:100%;accent-color:var(--pink);height:28px}
+.ctl{display:flex;justify-content:center;align-items:center;gap:18px;margin:6px 0 14px}
+button{font:inherit;color:var(--text);background:var(--panel);border:2px solid var(--line);border-radius:14px;padding:10px 16px;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:3px solid var(--yellow);outline-offset:2px}
+.play{width:68px;height:68px;border-radius:50%;background:var(--pink);border-color:var(--pink);font-size:26px;padding:0}
+.ctl button:not(.play){width:52px;height:52px;padding:0;font-size:20px;border-radius:50%}
+.row{margin:10px 0}
+.row label{display:flex;justify-content:space-between;font-weight:600;font-size:14px}
+.row b{color:var(--yellow)}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+.chips button{padding:8px 14px;font-size:14px}
+.chips button.on{background:var(--yellow);color:#14102b;border-color:var(--yellow);font-weight:700}
+.search{display:flex;gap:8px;margin:22px 0 8px}
+.search input{flex:1;min-width:0;font:inherit;color:var(--text);background:var(--panel);border:2px solid var(--line);border-radius:14px;padding:12px}
+.search button{background:var(--pink);border-color:var(--pink);font-weight:700}
+h2{font-size:16px;margin:12px 0 4px}
+#msg{color:var(--yellow);font-size:13px;min-height:18px;margin:4px 0}
+.add{width:100%;background:transparent;border-style:dashed;margin:6px 0 10px}
+ul{list-style:none;padding:0;margin:0}
+li{display:flex;align-items:center;gap:12px;padding:8px 4px;border-bottom:1px solid var(--line);cursor:pointer}
+li img,li .ph{width:46px;height:46px;border-radius:8px;object-fit:cover;background:var(--panel);flex:none}
+li div{min-width:0}
+li span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+li .a{color:var(--mute);font-size:13px}
+li.cur .t{color:var(--pink);font-weight:700}
+.note{color:var(--mute);font-size:12px;margin-top:14px}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+<main>
+<h1>Bocina Bajos</h1>
+<canvas id="cv" width="480" height="480"></canvas>
+<div id="title">Busca una canción para empezar</div>
+<div id="artist"></div>
+<div class="time"><span id="cur">0:00</span><span id="dur">0:00</span></div>
+<input type="range" id="seek" min="0" max="1000" value="0" aria-label="Posición">
+<div class="ctl">
+<button id="prev" aria-label="Anterior">⏮</button>
+<button id="pp" class="play" aria-label="Reproducir">▶</button>
+<button id="next" aria-label="Siguiente">⏭</button>
+</div>
+<div class="chips" id="chips"></div>
+<div class="row"><label>Graves <b id="vb">0 dB</b></label><input type="range" id="bass" min="0" max="18" step="1" value="0"></div>
+<div class="row"><label>Sub-bajo <b id="vs">0 dB</b></label><input type="range" id="sub" min="0" max="12" step="1" value="0"></div>
+<div class="row"><label>Volumen extra <b id="vv">100%</b></label><input type="range" id="vol" min="50" max="250" step="5" value="100"></div>
+
+<div class="search">
+<input id="q" type="search" placeholder="Buscar canción o artista" enterkeyhint="search" aria-label="Buscar música">
+<button id="go">Buscar</button>
+</div>
+<div id="msg"></div>
+<h2 id="rh">Tendencias</h2>
+<ul id="res"></ul>
+
+<button class="add" id="add">+ Agregar canciones de mi teléfono</button>
+<input type="file" id="file" accept="audio/*" multiple hidden>
+<h2>Mi lista</h2>
+<ul id="list"><li><span class="a">Aún no hay canciones</span></li></ul>
+<p class="note">La música en línea viene de Audius (artistas independientes: electrónica, hip-hop y más). Crédito a sus artistas. Sube también el volumen del celular y de la bocina; con graves muy altos puede distorsionar.</p>
+</main>
+<script>
+(function(){
+var $=function(i){return document.getElementById(i)};
+var APP="BocinaBajos",HOSTS=["https://discoveryprovider.audius.co","https://api.audius.co"];
+var audio=null,queue=[],idx=-1,ctx,low,sub,gain,comp,an,data,seeking=false;
+var art=null,ang=0,waves=[],sm=0,prevB=0;
+var PRESETS={Normal:[0,0,100],Bajos:[10,6,130],Party:[14,9,170],"Máximo":[18,12,220]};
+
+function msg(t){$("msg").textContent=t||""}
+
+function initCtx(){
+  if(ctx){if(ctx.state==="suspended")ctx.resume();return}
+  var AC=window.AudioContext||window.webkitAudioContext;
+  ctx=new AC();
+  low=ctx.createBiquadFilter();low.type="lowshelf";low.frequency.value=100;
+  sub=ctx.createBiquadFilter();sub.type="peaking";sub.frequency.value=55;sub.Q.value=1.1;
+  gain=ctx.createGain();
+  comp=ctx.createDynamicsCompressor();
+  comp.threshold.value=-14;comp.knee.value=12;comp.ratio.value=8;comp.attack.value=.003;comp.release.value=.2;
+  an=ctx.createAnalyser();an.fftSize=256;data=new Uint8Array(an.frequencyBinCount);
+  low.connect(sub);sub.connect(gain);gain.connect(comp);comp.connect(an);an.connect(ctx.destination);
+  apply();
+}
+function apply(){
+  var b=+$("bass").value,s=+$("sub").value,v=+$("vol").value;
+  $("vb").textContent=b+" dB";$("vs").textContent=s+" dB";$("vv").textContent=v+"%";
+  if(ctx){low.gain.value=b;sub.gain.value=s;gain.gain.value=v/100}
+  var on="";
+  for(var k in PRESETS){var p=PRESETS[k];if(p[0]===b&&p[1]===s&&p[2]===v)on=k}
+  var bt=$("chips").children;
+  for(var i=0;i<bt.length;i++)bt[i].className=bt[i].textContent===on?"on":"";
+}
+["bass","sub","vol"].forEach(function(id){$(id).addEventListener("input",apply)});
+Object.keys(PRESETS).forEach(function(k){
+  var b=document.createElement("button");b.textContent=k;
+  b.onclick=function(){var p=PRESETS[k];$("bass").value=p[0];$("sub").value=p[1];$("vol").value=p[2];apply()};
+  $("chips").appendChild(b);
+});
+
+function fmt(t){if(!isFinite(t))return"0:00";var m=Math.floor(t/60),s=Math.floor(t%60);return m+":"+(s<10?"0":"")+s}
+
+function makeAudio(route){
+  var a=new Audio();a.preload="auto";a._route=route;
+  if(route)a.crossOrigin="anonymous";
+  a.onplay=function(){if(a===audio)$("pp").textContent="⏸"};
+  a.onpause=function(){if(a===audio)$("pp").textContent="▶"};
+  a.onended=function(){if(a===audio)load(idx+1,true)};
+  a.ontimeupdate=function(){
+    if(a!==audio)return;
+    $("cur").textContent=fmt(a.currentTime);$("dur").textContent=fmt(a.duration);
+    if(a.duration&&!seeking)$("seek").value=a.currentTime/a.duration*1000;
+  };
+  a.onerror=function(){
+    if(a!==audio)return;
+    var t=queue[idx];
+    if(t&&!t.file&&a._route){load(idx,true,true)}
+    else msg("No se pudo reproducir esta canción. Prueba con otra o revisa tu internet.");
+  };
+  if(route){a._src=ctx.createMediaElementSource(a);a._src.connect(low)}
+  return a;
+}
+
+function load(i,play,noFx){
+  if(!queue.length)return;
+  initCtx();
+  idx=(i+queue.length)%queue.length;
+  var t=queue[idx];
+  if(audio){
+    audio.pause();
+    try{audio._src&&audio._src.disconnect()}catch(e){}
+    audio.removeAttribute("src");
+    if(audio._url)URL.revokeObjectURL(audio._url);
+  }
+  audio=makeAudio(!noFx);
+  if(t.file){audio._url=URL.createObjectURL(t.file);audio.src=audio._url}else audio.src=t.url;
+  $("title").textContent=t.title;$("artist").textContent=t.artist||"";
+  msg(noFx?"Esta canción suena sin efectos de graves (el servidor no permite procesarla).":"");
+  art=null;
+  if(t.art){var im=new Image();im.onload=function(){if(queue[idx]===t)art=im};im.src=t.art}
+  $("seek").value=0;renderList();
+  if(play)audio.play().catch(function(){});
+}
+
+function item(t,cur,fn){
+  var li=document.createElement("li");if(cur)li.className="cur";
+  var im;
+  if(t.art){im=document.createElement("img");im.src=t.art;im.alt="";im.loading="lazy"}
+  else{im=document.createElement("div");im.className="ph"}
+  var d=document.createElement("div");
+  var a=document.createElement("span");a.className="t";a.textContent=t.title;
+  var b=document.createElement("span");b.className="a";b.textContent=t.artist||"Mi teléfono";
+  d.appendChild(a);d.appendChild(b);li.appendChild(im);li.appendChild(d);li.onclick=fn;return li;
+}
+function renderList(){
+  var ul=$("list");ul.innerHTML="";
+  if(!queue.length){ul.innerHTML='<li><span class="a">Aún no hay canciones</span></li>';return}
+  queue.forEach(function(t,i){ul.appendChild(item(t,i===idx,function(){load(i,true)}))});
+}
+var results=[];
+function renderRes(){
+  var ul=$("res");ul.innerHTML="";
+  results.forEach(function(t){
+    ul.appendChild(item(t,false,function(){
+      var at=queue.indexOf(t);
+      if(at<0){queue.push(t);at=queue.length-1}
+      load(at,true);
+    }));
+  });
+}
+
+function getJSON(path){
+  var i=0;
+  function go(){
+    var b=HOSTS[i];
+    return fetch(b+path).then(function(r){if(!r.ok)throw 0;return r.json()})
+      .then(function(j){return{b:b,j:j}})
+      .catch(function(){if(++i<HOSTS.length)return go();throw 0});
+  }
+  return go();
+}
+function show(path,title){
+  msg("Buscando...");
+  getJSON(path).then(function(r){
+    results=(r.j.data||[]).map(function(d){
+      var a=d.artwork||{};
+      return{title:d.title,artist:d.user&&d.user.name,art:a["480x480"]||a["150x150"]||"",
+        url:r.b+"/v1/tracks/"+d.id+"/stream?app_name="+APP};
+    });
+    $("rh").textContent=title;renderRes();
+    msg(results.length?"":"No encontré resultados. Prueba con otro nombre.");
+  }).catch(function(){msg("No pude conectar. Revisa tu internet.")});
+}
+function search(){
+  var q=$("q").value.trim();
+  if(!q)return;
+  show("/v1/tracks/search?query="+encodeURIComponent(q)+"&limit=20&app_name="+APP,"Resultados para “"+q+"”");
+}
+$("go").onclick=search;
+$("q").addEventListener("keydown",function(e){if(e.key==="Enter")search()});
+
+$("add").onclick=function(){$("file").click()};
+$("file").onchange=function(e){
+  var add=Array.prototype.slice.call(e.target.files);
+  if(!add.length)return;
+  var first=!queue.length;
+  add.forEach(function(f){queue.push({file:f,title:f.name.replace(/\.[^.]+$/,""),artist:"",art:""})});
+  e.target.value="";
+  if(first)load(0,true);else renderList();
+};
+$("pp").onclick=function(){
+  if(!queue.length){$("q").focus();return}
+  initCtx();
+  if(!audio){load(0,true);return}
+  if(audio.paused)audio.play().catch(function(){});else audio.pause();
+};
+$("next").onclick=function(){load(idx+1,true)};
+$("prev").onclick=function(){if(audio&&audio.currentTime>3)audio.currentTime=0;else load(idx-1,true)};
+$("seek").addEventListener("input",function(){seeking=true;if(audio&&audio.duration)audio.currentTime=this.value/1000*audio.duration});
+$("seek").addEventListener("change",function(){seeking=false});
+
+// ---- Disco y ondas de bajo ----
+var cv=$("cv"),g=cv.getContext("2d"),W=cv.width;
+function draw(){
+  requestAnimationFrame(draw);
+  var playing=audio&&!audio.paused,bass=0;
+  if(an&&playing&&audio._route){an.getByteFrequencyData(data);var s=0;for(var i=0;i<5;i++)s+=data[i];bass=s/5/255}
+  else if(playing){bass=.25+.15*Math.sin(Date.now()/180)}
+  sm+=(bass-sm)*(bass>sm?.6:.12);
+  if(playing&&bass>.5&&bass-prevB>.06&&waves.length<7)waves.push({r:0,a:.8});
+  prevB=bass;
+  var c=W/2,R=W*.33;
+  g.fillStyle="#231b4d";g.fillRect(0,0,W,W);
+  // ondas del bajo
+  for(var k=waves.length-1;k>=0;k--){
+    var w=waves[k];w.r+=3.2+sm*2;w.a-=.011;
+    if(w.a<=0||R+w.r>W*.5){waves.splice(k,1);continue}
+    g.beginPath();g.arc(c,c,R+w.r,0,6.2832);
+    g.strokeStyle="rgba(255,77,141,"+w.a+")";g.lineWidth=5;g.stroke();
+  }
+  // disco
+  g.save();g.translate(c,c);
+  var sc=1+sm*.07;g.scale(sc,sc);g.rotate(ang);
+  g.beginPath();g.arc(0,0,R,0,6.2832);g.fillStyle="#0c0919";g.fill();
+  g.lineWidth=2;g.strokeStyle="rgba(255,255,255,.07)";
+  for(var r=R*.45;r<R*.97;r+=R*.07){g.beginPath();g.arc(0,0,r,0,6.2832);g.stroke()}
+  g.fillStyle="rgba(255,255,255,.07)";
+  for(var h=0;h<2;h++){g.beginPath();g.moveTo(0,0);g.arc(0,0,R*.97,h*3.1416,h*3.1416+.5);g.closePath();g.fill()}
+  var rl=R*.4;
+  g.save();g.beginPath();g.arc(0,0,rl,0,6.2832);g.clip();
+  if(art)g.drawImage(art,-rl,-rl,rl*2,rl*2);
+  else{g.fillStyle="#ff4d8d";g.fillRect(-rl,-rl,rl*2,rl*2)}
+  g.restore();
+  g.beginPath();g.arc(0,0,rl,0,6.2832);g.lineWidth=3;g.strokeStyle="#ffd23f";g.stroke();
+  g.beginPath();g.arc(0,0,R*.05,0,6.2832);g.fillStyle="#231b4d";g.fill();
+  g.restore();
+  if(playing)ang+=.012+sm*.035;
+}
+draw();
+apply();
+show("/v1/tracks/trending?limit=20&app_name="+APP,"Tendencias");
+})();
+</script>
+</body>
+</html>
